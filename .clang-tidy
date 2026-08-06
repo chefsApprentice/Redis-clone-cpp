@@ -1,0 +1,13 @@
+Checks: >
+  bugprone-*,
+  performance-*,
+  readability-*,
+  modernize-*,
+  cppcoreguidelines-*,
+  clang-analyzer-*,
+  portability-*,
+  misc-*
+
+WarningsAsErrors: ""
+
+HeaderFilterRegex: "src/|include/"

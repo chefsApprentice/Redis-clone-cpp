@@ -1,0 +1,67 @@
+name: C++ CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [gcc, clang]
+        build_type: [Debug, Release]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake \
+            ninja-build \
+            g++ \
+            clang \
+            clang-tidy \
+            cppcheck
+
+      - name: Select compiler
+        run: |
+          if [ "${{ matrix.compiler }}" = "gcc" ]; then
+            echo "CC=gcc" >> $GITHUB_ENV
+            echo "CXX=g++" >> $GITHUB_ENV
+          else
+            echo "CC=clang" >> $GITHUB_ENV
+            echo "CXX=clang++" >> $GITHUB_ENV
+          fi
+
+      - name: Configure
+        run: |
+          cmake \
+            -S . \
+            -B build \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DENABLE_ASAN=$([ "${{ matrix.build_type }}" = "Debug" ] && echo ON || echo OFF) \
+            -DENABLE_UBSAN=$([ "${{ matrix.build_type }}" = "Debug" ] && echo ON || echo OFF) \
+            -DENABLE_CLANG_TIDY=ON \
+            -DENABLE_CPPCHECK=ON
+
+      - name: Build
+        run: |
+          cmake --build build --parallel
+
+      - name: Run tests
+        working-directory: build
+        run: |
+          ctest --output-on-failure
