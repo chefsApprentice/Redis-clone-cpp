@@ -112,16 +112,10 @@ static auto try_one_request(Conn* conn) -> bool {
         return false; // error
     }
     // Process ommand and generate response
-    Response resp;
-    do_request(cmd, resp);
+    // Response resp;
+    do_request(cmd, conn->outgoing);
     // Append response to output buffer.
-    make_response(resp, conn->outgoing);
-
-    // printf("client says: len:%d data:%.*s\n", len, len < 100 ? len : 100, request);
-
-    // generate the response (echo)
-    // buf_append(conn->outgoing, (const uint8_t*)&len, read_size);
-    // buf_append(conn->outgoing, request, len);
+    // make_response(resp, conn->outgoing);
 
     // application logic done! remove the request message.
     buf_consume(&conn->incoming, read_size + len);

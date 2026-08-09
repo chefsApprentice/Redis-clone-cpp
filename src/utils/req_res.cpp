@@ -60,25 +60,44 @@ auto parse_req(const uint8_t* data, size_t size, std::vector<std::string>& out) 
     return 0;
 }
 
+static void patch_res_len(Buffer& out, uint32_t offset) {
+    // Because after finding offset aka our start point we allocate length.
+    uint32_t res_len = (buf_size(&out) - offset) - 4;
+    memcpy(out.data_start + offset, &res_len, 4);
+}
+
 // placeholder; implemented later
 static std::map<std::string, std::string> g_data;
 
-void do_request(std::vector<std::string>& cmd, Response& out) {
+void do_request(std::vector<std::string>& cmd, Buffer& out) {
+    auto offset = buf_size(&out);
+    const uint32_t def_len = 0;
+    buf_append(out, (const uint8_t*)&def_len, 4);
+
+    auto res_status = RES_OK;
     if (cmd.size() == 2 && cmd[0] == "get") {
         auto iterator = g_data.find(cmd[1]);
         if (iterator == g_data.end()) {
-            out.status = RES_NX; // not found
+            res_status = RES_NX;
+            buf_append(out, (const uint8_t*)&res_status, 4);
+            patch_res_len(out, offset);
             return;
         }
         const std::string& val = iterator->second;
-        out.data.assign(val.begin(), val.end());
+        buf_append(out, (const uint8_t*)&res_status, 4);
+        buf_append(out, (const uint8_t*)val.data(), val.size());
     } else if (cmd.size() == 3 && cmd[0] == "set") {
         g_data[cmd[1]].swap(cmd[2]);
+        buf_append(out, (const uint8_t*)&res_status, 4);
     } else if (cmd.size() == 2 && cmd[0] == "del") {
         g_data.erase(cmd[1]);
+        buf_append(out, (const uint8_t*)&res_status, 4);
     } else {
-        out.status = RES_ERR; // unrecognized command
+        const auto res_status = RES_ERR;
+        buf_append(out, (const uint8_t*)&res_status, 4);
     }
+
+    patch_res_len(out, offset);
 }
 
 void make_response(const Response& res, Buffer& out) {

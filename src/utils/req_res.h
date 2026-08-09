@@ -13,7 +13,7 @@ struct Response {
     std::vector<uint8_t> data;
 };
 
-void do_request(std::vector<std::string>& cmd, Response& out);
+void do_request(std::vector<std::string>& cmd, Buffer& out);
 void make_response(const Response &res, Buffer &out);
 auto read_u32(const uint8_t*& cur, const uint8_t* end, uint32_t& out) -> bool;
 auto read_str(const uint8_t*& cur, const uint8_t* end, size_t n, std::string& out) -> bool;
