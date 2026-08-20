@@ -5,9 +5,11 @@
 #include "utils/req_res.h"
 #include "constants.h"
 #include "utils/buffer.h"
+#include "utils/hashtable.h"
 #include <cstdint>
 #include <cstring>
 #include <map>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -66,8 +68,7 @@ static void patch_res_len(Buffer& out, uint32_t offset) {
     memcpy(out.data_start + offset, &res_len, 4);
 }
 
-// placeholder; implemented later
-static std::map<std::string, std::string> g_data;
+static HashTable g_data;
 
 void do_request(std::vector<std::string>& cmd, Buffer& out) {
     auto offset = buf_size(&out);
@@ -76,21 +77,20 @@ void do_request(std::vector<std::string>& cmd, Buffer& out) {
 
     auto res_status = RES_OK;
     if (cmd.size() == 2 && cmd[0] == "get") {
-        auto iterator = g_data.find(cmd[1]);
-        if (iterator == g_data.end()) {
+        auto val = g_data.hash_get(cmd[1]);
+        if (val == std::nullopt) {
             res_status = RES_NX;
             buf_append(out, (const uint8_t*)&res_status, 4);
             patch_res_len(out, offset);
             return;
         }
-        const std::string& val = iterator->second;
         buf_append(out, (const uint8_t*)&res_status, 4);
-        buf_append(out, (const uint8_t*)val.data(), val.size());
+        buf_append(out, (const uint8_t*)val->get().data(), val->get().size());
     } else if (cmd.size() == 3 && cmd[0] == "set") {
-        g_data[cmd[1]].swap(cmd[2]);
+        g_data.hash_set(cmd[1], cmd[2]);
         buf_append(out, (const uint8_t*)&res_status, 4);
     } else if (cmd.size() == 2 && cmd[0] == "del") {
-        g_data.erase(cmd[1]);
+        g_data.hash_remove(cmd[1]);
         buf_append(out, (const uint8_t*)&res_status, 4);
     } else {
         const auto res_status = RES_ERR;

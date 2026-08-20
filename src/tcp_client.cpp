@@ -127,7 +127,6 @@ static auto read_res(int fd) -> int32_t {
     }
     fprintf(stderr, "read_res: read body\n");
 
-
     // do something
     uint32_t status = 0;
     memcpy(&status, rbuf.data_start, sizeof(status));
@@ -156,22 +155,52 @@ auto main() -> int {
         die("connect");
     }
 
-    std::vector<std::string> cmd1 = {"set", "name", "Alice"};
-    std::vector<std::string> cmd2 = {
-        "get",
-        "name",
-    };
+    // std::vector<std::string> cmd1 = {"set", "name", "Alice"};
+    // std::vector<std::string> cmd2 = {
+    //     "get",
+    //     "name",
+    // };
+    //
+    // // multiple pipelined requests
+    // auto query_list = {cmd1, cmd2};
+    //
+    // for (const std::vector<std::string>& cmd : query_list) {
+    //     int32_t err = send_req(fd, cmd);
+    //     if (err != 0) {
+    //         goto L_DONE;
+    //     }
+    // }
+    //
+    // for (size_t i = 0; i < query_list.size(); ++i) {
+    //     int32_t err = read_res(fd);
+    //     if (err != 0) {
+    //         goto L_DONE;
+    //     }
+    // }
 
-    // multiple pipelined requests
-    auto query_list = {cmd1, cmd2};
+    std::vector<std::vector<std::string>> query_list;
 
-    for (const std::vector<std::string>& cmd : query_list) {
+    constexpr size_t count = 9;
+
+    // SET key0 value0 ... key8 value8
+    for (size_t i = 0; i < count; ++i) {
+        query_list.push_back({"set", "key" + std::to_string(i), "value" + std::to_string(i)});
+    }
+
+    // GET key0 ... key8
+    for (size_t i = 0; i < count; ++i) {
+        query_list.push_back({"get", "key" + std::to_string(i)});
+    }
+
+    // Send all requests (pipelined).
+    for (const auto& cmd : query_list) {
         int32_t err = send_req(fd, cmd);
         if (err != 0) {
             goto L_DONE;
         }
     }
 
+    // Read all responses.
     for (size_t i = 0; i < query_list.size(); ++i) {
         int32_t err = read_res(fd);
         if (err != 0) {
