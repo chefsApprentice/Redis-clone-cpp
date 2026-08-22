@@ -4,6 +4,7 @@
 
 #include "./utils/buffer.h"
 #include "./utils/constants.h"
+#include "./utils/serialisation.h"
 #include <arpa/inet.h>
 #include <assert.h>
 #include <cstdint>
@@ -83,7 +84,6 @@ static auto send_req(int fd, const std::vector<std::string>& cmd) -> int32_t {
     }
 
     int32_t ret = write_all(fd, &wbuf, buf_size(&wbuf));
-    fprintf(stderr, "send_req: write_all returned %d\n", ret);
     return ret;
 }
 
@@ -91,7 +91,6 @@ static auto read_res(int fd) -> int32_t {
     // 4 bytes header
     Buffer rbuf;
     buf_grow(&rbuf, 4);
-    fprintf(stderr, "read_res: about to read 4-byte header\n");
     errno = 0;
     int32_t err = read_full(fd, &rbuf, 4);
     if (err != 0) {
@@ -102,11 +101,9 @@ static auto read_res(int fd) -> int32_t {
         }
         return err;
     }
-    fprintf(stderr, "read_res: read 4-byte header\n");
 
     uint32_t len = 0;
     memcpy(&len, rbuf.data_start, 4); // assume little endian
-    fprintf(stderr, "read_res: length = %u\n", len);
     if (len > k_max_msg) {
         fprintf(stderr, "read_res: length too big %u\n", len);
         return -1;
@@ -115,7 +112,6 @@ static auto read_res(int fd) -> int32_t {
     // reply body
     buf_grow(&rbuf, len);
     buf_consume(&rbuf, 4);
-    fprintf(stderr, "read_res: about to read %u bytes body\n", len);
     err = read_full(fd, &rbuf, len);
     if (err) {
         if (errno == 0) {
@@ -125,18 +121,15 @@ static auto read_res(int fd) -> int32_t {
         }
         return err;
     }
-    fprintf(stderr, "read_res: read body\n");
 
-    // do something
-    uint32_t status = 0;
-    memcpy(&status, rbuf.data_start, sizeof(status));
-    fprintf(stderr, "status = %u\n", status);
-
-    size_t data_len = len - sizeof(status);
-    fprintf(stderr, "data = %.*s\n", (int)data_len,
-            reinterpret_cast<char*>(rbuf.data_start + sizeof(status)));
-
-    buf_consume(&rbuf, len);
+    // parse and print the tagged response body
+    std::string out;
+    const int32_t used = print_response(rbuf.data_start, len, out);
+    if (used < 0 || static_cast<size_t>(used) != len) {
+        msg("bad response");
+        return -1;
+    }
+    fputs(out.c_str(), stdout);
     return 0;
 }
 
@@ -155,28 +148,6 @@ auto main() -> int {
         die("connect");
     }
 
-    // std::vector<std::string> cmd1 = {"set", "name", "Alice"};
-    // std::vector<std::string> cmd2 = {
-    //     "get",
-    //     "name",
-    // };
-    //
-    // // multiple pipelined requests
-    // auto query_list = {cmd1, cmd2};
-    //
-    // for (const std::vector<std::string>& cmd : query_list) {
-    //     int32_t err = send_req(fd, cmd);
-    //     if (err != 0) {
-    //         goto L_DONE;
-    //     }
-    // }
-    //
-    // for (size_t i = 0; i < query_list.size(); ++i) {
-    //     int32_t err = read_res(fd);
-    //     if (err != 0) {
-    //         goto L_DONE;
-    //     }
-    // }
 
     std::vector<std::vector<std::string>> query_list;
 

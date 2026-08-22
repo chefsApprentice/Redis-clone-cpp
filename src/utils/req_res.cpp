@@ -6,6 +6,7 @@
 #include "constants.h"
 #include "utils/buffer.h"
 #include "utils/hashtable.h"
+#include "utils/serialisation.h"
 #include <cstdint>
 #include <cstring>
 #include <map>
@@ -73,36 +74,25 @@ static HashTable g_data;
 void do_request(std::vector<std::string>& cmd, Buffer& out) {
     auto offset = buf_size(&out);
     const uint32_t def_len = 0;
-    buf_append(out, (const uint8_t*)&def_len, 4);
+    buf_append(out, (const uint8_t*)&def_len, 4); // length placeholder, patched below
 
     auto res_status = RES_OK;
     if (cmd.size() == 2 && cmd[0] == "get") {
         auto val = g_data.hash_get(cmd[1]);
         if (val == std::nullopt) {
             res_status = RES_NX;
-            buf_append(out, (const uint8_t*)&res_status, 4);
-            patch_res_len(out, offset);
-            return;
+            append_nil(out);
+        } else {
+            append_str(out, std::string_view(val->get()));
         }
-        buf_append(out, (const uint8_t*)&res_status, 4);
-        buf_append(out, (const uint8_t*)val->get().data(), val->get().size());
     } else if (cmd.size() == 3 && cmd[0] == "set") {
         g_data.hash_set(cmd[1], cmd[2]);
-        buf_append(out, (const uint8_t*)&res_status, 4);
+        append_int(out, res_status);
     } else if (cmd.size() == 2 && cmd[0] == "del") {
-        g_data.hash_remove(cmd[1]);
-        buf_append(out, (const uint8_t*)&res_status, 4);
+        append_int(out, g_data.hash_remove(cmd[1]) ? res_status : RES_NX);
     } else {
-        const auto res_status = RES_ERR;
-        buf_append(out, (const uint8_t*)&res_status, 4);
+        res_status = RES_ERR;
+        append_err(out, res_status, "unknown command");
     }
-
     patch_res_len(out, offset);
-}
-
-void make_response(const Response& res, Buffer& out) {
-    uint32_t res_len = 4 + (uint32_t)res.data.size();
-    buf_append(out, (uint8_t*)&res_len, 4);
-    buf_append(out, (uint8_t*)&res.status, 4);
-    buf_append(out, res.data.data(), res.data.size());
 }

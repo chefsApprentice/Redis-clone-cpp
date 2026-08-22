@@ -60,5 +60,5 @@ class HashTable {
     auto hash_get(const string& key)
         -> std::optional<std::reference_wrapper<const std::string>>;
     auto hash_set(const string& key, const string& value) -> int;
-    auto hash_remove(const string& key) -> void;
+    auto hash_remove(const string& key) -> bool;
 };

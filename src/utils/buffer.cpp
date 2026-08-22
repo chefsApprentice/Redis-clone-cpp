@@ -4,19 +4,19 @@
 #include <stdlib.h>
 #include <string.h>
 
-size_t buf_capacity(Buffer *buf) {
+auto buf_capacity(Buffer *buf) -> size_t {
   if (!buf->buf_start)
     return 0;
   return (size_t)(buf->buf_end - buf->buf_start);
 }
 
-size_t buf_size(Buffer *buf) {
+auto buf_size(Buffer *buf) -> size_t {
   if (!buf->data_start)
     return 0;
   return (size_t)(buf->data_end - buf->data_start);
 }
 
-bool buf_realloc(Buffer *buf, size_t new_size) {
+auto buf_realloc(Buffer *buf, size_t new_size) -> bool {
   size_t size = buf_size(buf);
   if (new_size < size) {
     return false;
@@ -40,7 +40,7 @@ bool buf_realloc(Buffer *buf, size_t new_size) {
   return true;
 }
 
-bool buf_grow(Buffer *buf, size_t min_capacity) {
+auto buf_grow(Buffer *buf, size_t min_capacity) -> bool {
   size_t capacity = buf_capacity(buf);
 
   if (capacity >= min_capacity)

@@ -127,13 +127,15 @@ auto HashTable::hash_get(const string& key)
         cur = cur->next;
     }
 
-    size_t old_bucket = hash(key) % old_size;
-    const HashNode* cur_old = hashset_old[old_bucket];
-    while (cur_old != nullptr) {
-        if (cur_old->key == key) {
-            return cur_old->value;
+    if (hashset_old != nullptr) {
+        size_t old_bucket = hash(key) % old_size;
+        const HashNode* cur_old = hashset_old[old_bucket];
+        while (cur_old != nullptr) {
+            if (cur_old->key == key) {
+                return cur_old->value;
+            }
+            cur_old = cur_old->next;
         }
-        cur_old = cur_old->next;
     }
 
     return std::nullopt;
@@ -153,7 +155,7 @@ auto HashTable::hash_set(const string& key, const string& value) -> int {
     return 0;
 };
 
-auto HashTable::hash_remove(const string& key) -> void {
+auto HashTable::hash_remove(const string& key) -> bool {
     HashNode* target = nullptr;
     // Remove from old one, and move pointer along if collision.
     if (hashset_old != nullptr) {
@@ -193,8 +195,9 @@ auto HashTable::hash_remove(const string& key) -> void {
     }
     // free from node list.
     if (target == nullptr) {
-        return;
+        return false;
     }
 
     nodes.erase(target->owner);
+    return true;
 };

@@ -112,10 +112,8 @@ static auto try_one_request(Conn* conn) -> bool {
         return false; // error
     }
     // Process ommand and generate response
-    // Response resp;
     do_request(cmd, conn->outgoing);
     // Append response to output buffer.
-    // make_response(resp, conn->outgoing);
 
     // application logic done! remove the request message.
     buf_consume(&conn->incoming, read_size + len);
