@@ -12,9 +12,7 @@ using std::string;
 
 class HashNode {
     friend class HashTable;
-
     string key;
-    string value;
     HashNode* next = nullptr;
     std::list<std::unique_ptr<HashNode>>::iterator owner;
 };
@@ -44,8 +42,8 @@ class HashTable {
     static auto allocate_buckets(size_t count) -> HashNode**;
     auto bucket_insert(HashNode** buckets, size_t bucket_count, HashNode* node) -> void;
     auto migrate_one_bucket() -> void;
-    auto hashset_single_set(HashNode** hashset, const size_t& bucket_count, const string& key,
-                            const string& value) -> void;
+    auto hashset_single_add(HashNode** hashset, const size_t& bucket_count, const string& key)
+        -> HashNode*;
 
   public:
     HashTable() { hashset_new = allocate_buckets(new_size); }
@@ -57,8 +55,7 @@ class HashTable {
 
     auto static hash(const string& key) -> uint64_t;
 
-    auto hash_get(const string& key)
-        -> std::optional<std::reference_wrapper<const std::string>>;
-    auto hash_set(const string& key, const string& value) -> int;
+    auto hash_get(const string& key) -> HashNode*;
+    auto hash_add(const string& key) -> HashNode*;
     auto hash_remove(const string& key) -> bool;
 };

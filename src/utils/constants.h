@@ -7,4 +7,6 @@ enum {
     RES_OK = 0,
     RES_ERR = 1,
     RES_NX = 2, // NX stands for "Not eXist"
+    RES_UKNOWN = 3,
+    RES_BAD_ARG = 4,
 };

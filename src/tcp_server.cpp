@@ -3,12 +3,12 @@
 // Description: Generic TCP server with sockets.
 
 // stdlib
-#include <assert.h>
-#include <errno.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include <cassert>
+#include <cerrno>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <string>
 // system
 #include <arpa/inet.h>
@@ -61,14 +61,14 @@ struct Conn {
 };
 
 // application callback when the listening socket is ready
-static Conn* handle_accept(int fd) {
+static auto handle_accept(int fd) -> Conn* {
     // accept
     struct sockaddr_in client_addr = {};
     socklen_t addrlen = sizeof(client_addr);
     int connfd = accept(fd, (struct sockaddr*)&client_addr, &addrlen);
     if (connfd < 0) {
         msg_errno("accept() error");
-        return NULL;
+        return nullptr;
     }
     uint32_t ip = client_addr.sin_addr.s_addr;
     fprintf(stderr, "new client from %u.%u.%u.%u:%u\n", ip & 255, (ip >> 8) & 255, (ip >> 16) & 255,

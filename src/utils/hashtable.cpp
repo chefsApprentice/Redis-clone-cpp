@@ -48,7 +48,7 @@ auto HashTable::migrate_one_bucket() -> void {
     HashNode* cur = hashset_old[old_update_index];
     while (cur != nullptr) {
         HashNode* next = cur->next;
-        hashset_single_set(hashset_new, new_size, cur->key, cur->value);
+        hashset_single_add(hashset_new, new_size, cur->key);
         cur = next;
     }
     old_update_index++;
@@ -70,17 +70,16 @@ auto HashTable::hashset_grow() -> void {
     old_update_index = 0;
 }
 
-auto HashTable::hashset_single_set(HashNode** hashset, const size_t& bucket_count,
-                                   const string& key, const string& value) -> void {
+auto HashTable::hashset_single_add(HashNode** hashset, const size_t& bucket_count,
+                                   const string& key) -> HashNode* {
     if (hashset == nullptr) {
-        return;
+        return nullptr;
     }
     size_t bucket = hash(key) % bucket_count;
     HashNode* cur = hashset[bucket];
     bool key_exists = false;
     while (cur != nullptr) {
         if (cur->key == key) {
-            cur->value = value;
             key_exists = true;
             break;
         }
@@ -88,11 +87,10 @@ auto HashTable::hashset_single_set(HashNode** hashset, const size_t& bucket_coun
     }
     if (!key_exists) {
         if (hashset == hashset_old) {
-            return;
+            return nullptr;
         }
         auto node = std::make_unique<HashNode>();
         node->key = key;
-        node->value = value;
         HashNode* node_ptr = node.get();
         node_ptr->next = hashset_new[bucket];
         hashset_new[bucket] = node_ptr;
@@ -101,7 +99,10 @@ auto HashTable::hashset_single_set(HashNode** hashset, const size_t& bucket_coun
         auto itr = std::prev(nodes.end());
         itr->get()->owner = itr;
         ++new_entries;
+        return node_ptr;
     }
+
+    return cur;
 };
 
 auto HashTable::hash(const string& key) -> uint64_t {
@@ -116,43 +117,42 @@ auto HashTable::hash(const string& key) -> uint64_t {
     return hash;
 }
 
-auto HashTable::hash_get(const string& key)
-    -> std::optional<std::reference_wrapper<const std::string>> {
+auto HashTable::hash_get(const string& key) -> HashNode* {
     size_t new_bucket = hash(key) % new_size;
     HashNode* cur = hashset_new[new_bucket];
     while (cur != nullptr) {
         if (cur->key == key) {
-            return cur->value;
+            return cur;
         }
         cur = cur->next;
     }
 
     if (hashset_old != nullptr) {
         size_t old_bucket = hash(key) % old_size;
-        const HashNode* cur_old = hashset_old[old_bucket];
+        HashNode* cur_old = hashset_old[old_bucket];
         while (cur_old != nullptr) {
             if (cur_old->key == key) {
-                return cur_old->value;
+                return cur_old;
             }
             cur_old = cur_old->next;
         }
     }
 
-    return std::nullopt;
+    return nullptr;
 }
 
-auto HashTable::hash_set(const string& key, const string& value) -> int {
+auto HashTable::hash_add(const string& key) -> HashNode* {
     // Move old ones from current index
     migrate_one_bucket();
     // Update new one.
-    hashset_single_set(hashset_new, new_size, key, value);
+    HashNode* node = hashset_single_add(hashset_new, new_size, key);
     // ensure old copies are updated
-    hashset_single_set(hashset_old, old_size, key, value);
+    hashset_single_add(hashset_old, old_size, key);
     if (static_cast<double>(new_entries) / static_cast<double>(new_size) > LOAD_THRESHOLD &&
         hashset_old != nullptr) {
         hashset_grow();
     }
-    return 0;
+    return node;
 };
 
 auto HashTable::hash_remove(const string& key) -> bool {
