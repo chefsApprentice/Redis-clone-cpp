@@ -174,6 +174,48 @@ TEST(SerialisationTest, doRequestIntegration) {
     run({"del", "absent-key"}, "(int) 2\n"); // RES_NX: "Not eXist"
     run({"set", "d_k", "v"}, "(int) 0\n");   // RES_OK
     run({"del", "d_k"}, "(int) 0\n");        // RES_OK
+    // leave the store empty for LeakSanitizer: del frees the Entry
+    run({"del", "s_k"}, "(int) 0\n");
     run({"noflub"}, "(err) 1 unknown command\n"); // code = RES_ERR
     run({"get"}, "(err) 1 unknown command\n");    // arity mismatch, code = RES_ERR
+}
+
+// The zset commands through the same do_request path: mirrors the wire
+// behaviour the client sees for zadd / zscore / zquery / zrem.
+// g_data persists across cases, so keys are unique to this test.
+TEST(SerialisationTest, zsetCommands) {
+    const auto run = [](const std::vector<std::string>& requested, const std::string& expect) {
+        std::vector<std::string> cmd = requested;
+        Buffer buf;
+        do_request(cmd, buf);
+        uint32_t len = 0;
+        memcpy(&len, buf.data_start, 4);
+        ASSERT_EQ(4 + (size_t)len, buf_size(&buf)); // patch_res_len regression check
+        std::string s;
+        const int32_t used = print_response(buf.data_start + 4, len, s);
+        ASSERT_EQ(used, (int32_t)len); // no trailing garbage inside the frame
+        EXPECT_EQ(s, expect);
+    };
+
+    run({"zadd", "z_it", "1.5", "m_a"}, "(nil)\n");
+    run({"zscore", "z_it", "m_a"}, "(dbl) 1.5\n");
+    run({"zadd", "z_it", "2.5", "m_b"}, "(nil)\n");
+    // zquery emits a tagged array of alternating (name, score) pairs
+    run({"zquery", "z_it", "0", "", "0", "4"},
+        "(arr) len=4\n(str) m_a\n(dbl) 1.5\n(str) m_b\n(dbl) 2.5\n(arr) end\n");
+    // offset into the result: skip the first pair (both pairs still present)
+    run({"zquery", "z_it", "0", "", "1", "4"},
+        "(arr) len=2\n(str) m_b\n(dbl) 2.5\n(arr) end\n");
+    run({"zrem", "z_it", "m_a"}, "(int) 0\n");
+    run({"zquery", "z_it", "0", "", "0", "4"},
+        "(arr) len=2\n(str) m_b\n(dbl) 2.5\n(arr) end\n");
+    run({"zscore", "z_it", "gone"}, "(err) 2 Target znode not found\n");
+    run({"zadd", "z_it", "abc", "m_c"}, "(err) 4 expect float\n");
+    // zadd on a key that already holds a string must error, not crash
+    run({"set", "zs_s", "v"}, "(int) 0\n");
+    run({"zadd", "zs_s", "1", "m"}, "(err) 4 Key does not point to a zset.\n");
+    // leave the store empty for LeakSanitizer: del disposes the live zset
+    // and frees both Entries
+    run({"del", "z_it"}, "(int) 0\n");
+    run({"del", "zs_s"}, "(int) 0\n");
 }

@@ -1,37 +1,91 @@
 // File: tests/hashtable_test.cpp
 
+#include "utils/container_of.h"
 #include "utils/hashtable.h"
 
 #include <gtest/gtest.h>
 
 #include <cstddef>
-#include <optional>
+#include <memory>
 #include <string>
 #include <vector>
 
 using std::string;
+
+// A heap-allocated item with an embedded HashNode, owned by TestStore below.
+// Mirrors Entry in req_res.cpp: the table stores only the node address.
+struct TestEntry {
+    HashNode node;
+    std::string key;
+    std::string value;
+
+    TestEntry(std::string k, std::string v) : key(std::move(k)), value(std::move(v)) {}
+};
+
+static auto entry_eq(const HashNode* node, const string& key) -> bool {
+    return container_of(node, &TestEntry::node)->key == key;
+}
+
+// Owning wrapper around HashTable presenting the value-keyed API (hash_set /
+// hash_get / hash_remove) these cases were written against. The table itself
+// is non-owning, so the live TestEntries live in `entries`: hash_set inserts
+// a new entry or updates an existing one, hash_remove unlinks and frees.
+class TestStore {
+    HashTable table;
+    std::vector<std::unique_ptr<TestEntry>> entries;
+
+  public:
+    auto hash_set(const string& key, const string& value) -> void {
+        if (HashNode* found = table.hash_get(key, entry_eq)) {
+            container_of(found, &TestEntry::node)->value = value;
+            return;
+        }
+        auto entry = std::unique_ptr<TestEntry>(new TestEntry(key, value));
+        table.hash_add(key, &entry->node);
+        entries.push_back(std::move(entry));
+    }
+
+    auto hash_get(const string& key) -> TestEntry* {
+        HashNode* found = table.hash_get(key, entry_eq);
+        return (found != nullptr) ? container_of(found, &TestEntry::node) : nullptr;
+    }
+
+    auto hash_remove(const string& key) -> void {
+        HashNode* found = table.hash_remove(key, entry_eq);
+        if (found == nullptr) {
+            return;
+        }
+        TestEntry* removed = container_of(found, &TestEntry::node);
+        for (auto it = entries.begin(); it != entries.end(); ++it) {
+            if (it->get() == removed) {
+                entries.erase(it);
+                return;
+            }
+        }
+    }
+};
 
 // ============================================================
 // Basic functionality
 // ============================================================
 
 TEST(HashTableTest, SetAndGet) {
-    HashTable table;
+    TestStore table;
 
-    ASSERT_EQ(table.hash_set("name", "Alice"), 0);
+    table.hash_set("name", "Alice");
 
-    auto result = table.hash_get("name");
+    TestEntry* result = table.hash_get("name");
 
-    ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(result->get(), "Alice");
+    ASSERT_NE(result, nullptr);
+    EXPECT_EQ(result->value, "Alice");
 }
 
 TEST(HashTableTest, MissingKeyReturnsEmpty) {
-    HashTable table;
+    TestStore table;
 
-    auto result = table.hash_get("does-not-exist");
+    TestEntry* result = table.hash_get("does-not-exist");
 
-    EXPECT_FALSE(result.has_value());
+    EXPECT_EQ(result, nullptr);
 }
 
 // ============================================================
@@ -39,27 +93,27 @@ TEST(HashTableTest, MissingKeyReturnsEmpty) {
 // ============================================================
 
 TEST(HashTableTest, SetExistingKeyUpdatesValue) {
-    HashTable table;
+    TestStore table;
 
-    ASSERT_EQ(table.hash_set("name", "Alice"), 0);
-    ASSERT_EQ(table.hash_set("name", "Bob"), 0);
+    table.hash_set("name", "Alice");
+    table.hash_set("name", "Bob");
 
-    auto result = table.hash_get("name");
+    TestEntry* result = table.hash_get("name");
 
-    ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(result->get(), "Bob");
+    ASSERT_NE(result, nullptr);
+    EXPECT_EQ(result->value, "Bob");
 }
 
 TEST(HashTableTest, RepeatedOverwrite) {
-    HashTable table;
+    TestStore table;
 
     for (int i = 0; i < 100; ++i) {
-        ASSERT_EQ(table.hash_set("key", std::to_string(i)), 0);
+        table.hash_set("key", std::to_string(i));
 
-        auto result = table.hash_get("key");
+        TestEntry* result = table.hash_get("key");
 
-        ASSERT_TRUE(result.has_value());
-        EXPECT_EQ(result->get(), std::to_string(i));
+        ASSERT_NE(result, nullptr);
+        EXPECT_EQ(result->value, std::to_string(i));
     }
 }
 
@@ -68,43 +122,43 @@ TEST(HashTableTest, RepeatedOverwrite) {
 // ============================================================
 
 TEST(HashTableTest, RemoveExistingKey) {
-    HashTable table;
+    TestStore table;
 
-    ASSERT_EQ(table.hash_set("name", "Alice"), 0);
+    table.hash_set("name", "Alice");
 
     table.hash_remove("name");
 
-    auto result = table.hash_get("name");
+    TestEntry* result = table.hash_get("name");
 
-    EXPECT_FALSE(result.has_value());
+    EXPECT_EQ(result, nullptr);
 }
 
 TEST(HashTableTest, RemoveMissingKeyDoesNothing) {
-    HashTable table;
+    TestStore table;
 
-    ASSERT_EQ(table.hash_set("name", "Alice"), 0);
+    table.hash_set("name", "Alice");
 
     table.hash_remove("does-not-exist");
 
-    auto result = table.hash_get("name");
+    TestEntry* result = table.hash_get("name");
 
-    ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(result->get(), "Alice");
+    ASSERT_NE(result, nullptr);
+    EXPECT_EQ(result->value, "Alice");
 }
 
 TEST(HashTableTest, RemoveThenReinsert) {
-    HashTable table;
+    TestStore table;
 
-    ASSERT_EQ(table.hash_set("name", "Alice"), 0);
+    table.hash_set("name", "Alice");
 
     table.hash_remove("name");
 
-    ASSERT_EQ(table.hash_set("name", "Bob"), 0);
+    table.hash_set("name", "Bob");
 
-    auto result = table.hash_get("name");
+    TestEntry* result = table.hash_get("name");
 
-    ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(result->get(), "Bob");
+    ASSERT_NE(result, nullptr);
+    EXPECT_EQ(result->value, "Bob");
 }
 
 // ============================================================
@@ -112,20 +166,20 @@ TEST(HashTableTest, RemoveThenReinsert) {
 // ============================================================
 
 TEST(HashTableTest, GrowsBeyondInitialCapacity) {
-    HashTable table;
+    TestStore table;
 
     constexpr int COUNT = 1000;
 
     for (int i = 0; i < COUNT; ++i) {
-        ASSERT_EQ(table.hash_set("key-" + std::to_string(i), "value-" + std::to_string(i)), 0);
+        table.hash_set("key-" + std::to_string(i), "value-" + std::to_string(i));
     }
 
     for (int i = 0; i < COUNT; ++i) {
-        auto result = table.hash_get("key-" + std::to_string(i));
+        TestEntry* result = table.hash_get("key-" + std::to_string(i));
 
-        ASSERT_TRUE(result.has_value()) << "Missing key-" << i;
+        ASSERT_NE(result, nullptr) << "Missing key-" << i;
 
-        EXPECT_EQ(result->get(), "value-" + std::to_string(i));
+        EXPECT_EQ(result->value, "value-" + std::to_string(i));
     }
 }
 
@@ -138,29 +192,29 @@ TEST(HashTableTest, GrowsBeyondInitialCapacity) {
 // ============================================================
 
 TEST(HashTableTest, FetchDuringRepeatedGrowth) {
-    HashTable table;
+    TestStore table;
 
     for (int i = 0; i < 500; ++i) {
         const string key = "key-" + std::to_string(i);
 
         const string value = "value-" + std::to_string(i);
 
-        ASSERT_EQ(table.hash_set(key, value), 0);
+        table.hash_set(key, value);
 
-        auto result = table.hash_get(key);
+        TestEntry* result = table.hash_get(key);
 
-        ASSERT_TRUE(result.has_value());
-        EXPECT_EQ(result->get(), value);
+        ASSERT_NE(result, nullptr);
+        EXPECT_EQ(result->value, value);
 
         // Periodically check an older key.
         if (i >= 10 && i % 10 == 0) {
             const string old_key = "key-" + std::to_string(i - 10);
 
-            auto old_result = table.hash_get(old_key);
+            TestEntry* old_result = table.hash_get(old_key);
 
-            ASSERT_TRUE(old_result.has_value());
+            ASSERT_NE(old_result, nullptr);
 
-            EXPECT_EQ(old_result->get(), "value-" + std::to_string(i - 10));
+            EXPECT_EQ(old_result->value, "value-" + std::to_string(i - 10));
         }
     }
 }
@@ -173,7 +227,7 @@ TEST(HashTableTest, FetchDuringRepeatedGrowth) {
 // ============================================================
 
 TEST(HashTableTest, HandlesCollisions) {
-    HashTable table;
+    TestStore table;
 
     constexpr std::size_t BUCKET_COUNT = 8;
 
@@ -191,15 +245,15 @@ TEST(HashTableTest, HandlesCollisions) {
     ASSERT_GE(colliding_keys.size(), 10u);
 
     for (std::size_t i = 0; i < colliding_keys.size(); ++i) {
-        ASSERT_EQ(table.hash_set(colliding_keys[i], "value-" + std::to_string(i)), 0);
+        table.hash_set(colliding_keys[i], "value-" + std::to_string(i));
     }
 
     for (std::size_t i = 0; i < colliding_keys.size(); ++i) {
-        auto result = table.hash_get(colliding_keys[i]);
+        TestEntry* result = table.hash_get(colliding_keys[i]);
 
-        ASSERT_TRUE(result.has_value()) << "Missing colliding key: " << colliding_keys[i];
+        ASSERT_NE(result, nullptr) << "Missing colliding key: " << colliding_keys[i];
 
-        EXPECT_EQ(result->get(), "value-" + std::to_string(i));
+        EXPECT_EQ(result->value, "value-" + std::to_string(i));
     }
 }
 
@@ -216,7 +270,7 @@ TEST(HashTableTest, HandlesCollisions) {
 // ============================================================
 
 TEST(HashTableTest, RemoveFromCollisionChain) {
-    HashTable table;
+    TestStore table;
 
     constexpr std::size_t BUCKET_COUNT = 8;
 
@@ -234,7 +288,7 @@ TEST(HashTableTest, RemoveFromCollisionChain) {
     ASSERT_EQ(colliding_keys.size(), 5u);
 
     for (std::size_t i = 0; i < colliding_keys.size(); ++i) {
-        ASSERT_EQ(table.hash_set(colliding_keys[i], "value-" + std::to_string(i)), 0);
+        table.hash_set(colliding_keys[i], "value-" + std::to_string(i));
     }
 
     // Remove first.
@@ -247,22 +301,22 @@ TEST(HashTableTest, RemoveFromCollisionChain) {
     table.hash_remove(colliding_keys[4]);
 
     // Remaining nodes.
-    auto result1 = table.hash_get(colliding_keys[1]);
+    TestEntry* result1 = table.hash_get(colliding_keys[1]);
 
-    ASSERT_TRUE(result1.has_value());
-    EXPECT_EQ(result1->get(), "value-1");
+    ASSERT_NE(result1, nullptr);
+    EXPECT_EQ(result1->value, "value-1");
 
-    auto result3 = table.hash_get(colliding_keys[3]);
+    TestEntry* result3 = table.hash_get(colliding_keys[3]);
 
-    ASSERT_TRUE(result3.has_value());
-    EXPECT_EQ(result3->get(), "value-3");
+    ASSERT_NE(result3, nullptr);
+    EXPECT_EQ(result3->value, "value-3");
 
     // Removed nodes.
-    EXPECT_FALSE(table.hash_get(colliding_keys[0]).has_value());
+    EXPECT_EQ(table.hash_get(colliding_keys[0]), nullptr);
 
-    EXPECT_FALSE(table.hash_get(colliding_keys[2]).has_value());
+    EXPECT_EQ(table.hash_get(colliding_keys[2]), nullptr);
 
-    EXPECT_FALSE(table.hash_get(colliding_keys[4]).has_value());
+    EXPECT_EQ(table.hash_get(colliding_keys[4]), nullptr);
 }
 
 // ============================================================
@@ -272,12 +326,12 @@ TEST(HashTableTest, RemoveFromCollisionChain) {
 // ============================================================
 
 TEST(HashTableTest, RemoveKeysAfterGrowth) {
-    HashTable table;
+    TestStore table;
 
     constexpr int COUNT = 500;
 
     for (int i = 0; i < COUNT; ++i) {
-        ASSERT_EQ(table.hash_set("key-" + std::to_string(i), "value-" + std::to_string(i)), 0);
+        table.hash_set("key-" + std::to_string(i), "value-" + std::to_string(i));
     }
 
     // Remove every second key.
@@ -287,16 +341,16 @@ TEST(HashTableTest, RemoveKeysAfterGrowth) {
 
     // Odd keys should still exist.
     for (int i = 1; i < COUNT; i += 2) {
-        auto result = table.hash_get("key-" + std::to_string(i));
+        TestEntry* result = table.hash_get("key-" + std::to_string(i));
 
-        ASSERT_TRUE(result.has_value()) << "key-" << i << " disappeared";
+        ASSERT_NE(result, nullptr) << "key-" << i << " disappeared";
 
-        EXPECT_EQ(result->get(), "value-" + std::to_string(i));
+        EXPECT_EQ(result->value, "value-" + std::to_string(i));
     }
 
     // Even keys should be gone.
     for (int i = 0; i < COUNT; i += 2) {
-        EXPECT_FALSE(table.hash_get("key-" + std::to_string(i)).has_value());
+        EXPECT_EQ(table.hash_get("key-" + std::to_string(i)), nullptr);
     }
 }
 
@@ -305,16 +359,16 @@ TEST(HashTableTest, RemoveKeysAfterGrowth) {
 // ============================================================
 
 TEST(HashTableTest, LargeValues) {
-    HashTable table;
+    TestStore table;
 
     string value(100000, 'A');
 
-    ASSERT_EQ(table.hash_set("large", value), 0);
+    table.hash_set("large", value);
 
-    auto result = table.hash_get("large");
+    TestEntry* result = table.hash_get("large");
 
-    ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(result->get(), value);
+    ASSERT_NE(result, nullptr);
+    EXPECT_EQ(result->value, value);
 }
 
 // ============================================================
@@ -322,14 +376,14 @@ TEST(HashTableTest, LargeValues) {
 // ============================================================
 
 TEST(HashTableTest, EmptyValue) {
-    HashTable table;
+    TestStore table;
 
-    ASSERT_EQ(table.hash_set("empty", ""), 0);
+    table.hash_set("empty", "");
 
-    auto result = table.hash_get("empty");
+    TestEntry* result = table.hash_get("empty");
 
-    ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(result->get(), "");
+    ASSERT_NE(result, nullptr);
+    EXPECT_EQ(result->value, "");
 }
 
 // ============================================================
@@ -337,18 +391,18 @@ TEST(HashTableTest, EmptyValue) {
 // ============================================================
 
 TEST(HashTableTest, MixedWorkload) {
-    HashTable table;
+    TestStore table;
 
     constexpr int COUNT = 1000;
 
     // Insert.
     for (int i = 0; i < COUNT; ++i) {
-        ASSERT_EQ(table.hash_set("key-" + std::to_string(i), "value-" + std::to_string(i)), 0);
+        table.hash_set("key-" + std::to_string(i), "value-" + std::to_string(i));
     }
 
     // Overwrite every third key.
     for (int i = 0; i < COUNT; i += 3) {
-        ASSERT_EQ(table.hash_set("key-" + std::to_string(i), "updated-" + std::to_string(i)), 0);
+        table.hash_set("key-" + std::to_string(i), "updated-" + std::to_string(i));
     }
 
     // Delete every fifth key.
@@ -360,18 +414,18 @@ TEST(HashTableTest, MixedWorkload) {
     for (int i = 0; i < COUNT; ++i) {
         const string key = "key-" + std::to_string(i);
 
-        auto result = table.hash_get(key);
+        TestEntry* result = table.hash_get(key);
 
         if (i % 5 == 0) {
-            EXPECT_FALSE(result.has_value()) << key << " should have been removed";
+            EXPECT_EQ(result, nullptr) << key << " should have been removed";
         } else if (i % 3 == 0) {
-            ASSERT_TRUE(result.has_value()) << key << " should exist";
+            ASSERT_NE(result, nullptr) << key << " should exist";
 
-            EXPECT_EQ(result->get(), "updated-" + std::to_string(i));
+            EXPECT_EQ(result->value, "updated-" + std::to_string(i));
         } else {
-            ASSERT_TRUE(result.has_value()) << key << " should exist";
+            ASSERT_NE(result, nullptr) << key << " should exist";
 
-            EXPECT_EQ(result->get(), "value-" + std::to_string(i));
+            EXPECT_EQ(result->value, "value-" + std::to_string(i));
         }
     }
 }

@@ -23,3 +23,5 @@ inline auto avl_cnt(AvlNode* node) -> uint32_t { return (node != nullptr) ? node
 // API
 auto avl_fix(AvlNode* node) -> AvlNode*;
 auto avl_del(AvlNode* node) -> AvlNode*;
+// offset into the succeeding or preceding node; worst case O(log N)
+auto avl_offset(AvlNode* node, int64_t offset) -> AvlNode*;

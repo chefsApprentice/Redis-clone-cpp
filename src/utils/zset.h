@@ -17,9 +17,8 @@ struct ZNode {
     static auto znode_new(const char* name, size_t len, double score, HashTable* hmap) -> ZNode* {
         auto* node = (ZNode*)malloc(sizeof(ZNode) + len); // struct + array
         avl_init(&node->tree);
-        node->hnode = *hmap->hash_add(name);
-        // node->hmap.next = nullptr;
-        // node->hmap.hcode = str_hash((uint8_t*)name, len);
+        // link our embedded hash node; the table stores its address, not a copy
+        hmap->hash_add(std::string(name, len), &node->hnode);
         node->score = score;
         node->len = len;
         memcpy(&node->name[0], name, len);
@@ -35,16 +34,17 @@ struct ZSet {
 
     static auto zset_insert(ZSet* zset, const char* name, size_t len, double score) -> bool;
     static auto zset_lookup(ZSet* zset, const char* name, size_t len) -> ZNode*;
-    static auto zset_lookup(ZSet* zset, const string *key) -> ZNode*;
+    static auto zset_lookup(ZSet* zset, const string* key) -> ZNode*;
     static void zset_delete(ZSet* zset, ZNode* node);
-    static void zset_clear(ZSet* zset, ZNode* node);
+    static void zset_delete(ZSet* zset, const string* key);
     static auto znode_offset(ZNode* node, int64_t offset) -> ZNode*;
-    static auto avl_offset(AvlNode* node, int64_t offset) -> AvlNode*;
     static auto zset_seekge(ZSet* zset, double score, const char* name, size_t len) -> ZNode*;
     static void zset_update(ZSet* zset, ZNode* node, double score);
     static void zset_tree_insert(ZSet* zset, ZNode* node);
     static auto zless(AvlNode* node, double score, const char* name, size_t len) -> bool;
     static auto zless(AvlNode* lhs, AvlNode* rhs) -> bool;
+    static auto dispose_zset(ZSet& zs) -> void;
+    static auto znode_key_eq(const HashNode* node, const std::string& key) -> bool;
 };
 
 struct Entry {

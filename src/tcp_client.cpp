@@ -69,7 +69,7 @@ static auto send_req(int fd, const std::vector<std::string>& cmd) -> int32_t {
     }
 
     if (len > k_max_msg) {
-        fprintf(stderr, "send_req: len too big %zu\n", len);
+        fprintf(stderr, "send_req: len too big %u\n", len);
         return -1;
     }
 
@@ -162,6 +162,20 @@ auto main() -> int {
     for (size_t i = 0; i < count; ++i) {
         query_list.push_back({"get", "key" + std::to_string(i)});
     }
+
+    // DEL key3
+    query_list.push_back({"del", "key3"});
+
+    // sorted sets: one zset walked through every command
+    query_list.push_back({"zadd", "zset1", "1", "member1"});
+    query_list.push_back({"zadd", "zset1", "2.5", "member2"});
+    query_list.push_back({"zadd", "zset1", "3.5", "member3"});
+    query_list.push_back({"zscore", "zset1", "member2"});
+    query_list.push_back({"zquery", "zset1", "0", "", "0", "4"}); // first 2 members by score
+    query_list.push_back({"zrem", "zset1", "member1"});
+    query_list.push_back({"zquery", "zset1", "0", "", "0", "4"}); // remaining 2
+    query_list.push_back({"del", "zset1"}); // exercises the ZSet dispose path
+    query_list.push_back({"get", "zset1"}); // nil: the key is gone
 
     // Send all requests (pipelined).
     for (const auto& cmd : query_list) {

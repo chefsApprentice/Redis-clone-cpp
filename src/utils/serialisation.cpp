@@ -42,19 +42,22 @@ void append_arr_header(Buffer& out, uint32_t count) {
     buf_append(out, reinterpret_cast<const uint8_t*>(&count), 4);
 }
 
-int32_t print_response(const uint8_t* data, size_t size, std::string& dst) {
-    if (size < 1) return -1;
+auto print_response(const uint8_t* data, size_t size, std::string& dst) -> int32_t {
+    if (size < 1)
+        return -1;
     switch (static_cast<Tag>(data[0])) {
     case Tag::TAG_NIL:
         dst += "(nil)\n";
         return 1;
     case Tag::TAG_ERR: {
-        if (size < 1 + 8) return -1;
+        if (size < 1 + 8)
+            return -1;
         int32_t code = 0;
         uint32_t n = 0;
         memcpy(&code, &data[1], 4);
         memcpy(&n, &data[1 + 4], 4);
-        if (size < 9 + static_cast<size_t>(n)) return -1;
+        if (size < 9 + static_cast<size_t>(n))
+            return -1;
         dst += "(err) ";
         dst += std::to_string(code);
         dst += ' ';
@@ -63,17 +66,20 @@ int32_t print_response(const uint8_t* data, size_t size, std::string& dst) {
         return static_cast<int32_t>(9 + n);
     }
     case Tag::TAG_STR: {
-        if (size < 1 + 4) return -1;
+        if (size < 1 + 4)
+            return -1;
         uint32_t n = 0;
         memcpy(&n, &data[1], 4);
-        if (size < 5 + static_cast<size_t>(n)) return -1;
+        if (size < 5 + static_cast<size_t>(n))
+            return -1;
         dst += "(str) ";
         dst.append(reinterpret_cast<const char*>(&data[5]), n);
         dst += '\n';
         return static_cast<int32_t>(5 + n);
     }
     case Tag::TAG_INT: {
-        if (size < 1 + 8) return -1;
+        if (size < 1 + 8)
+            return -1;
         int64_t val = 0;
         memcpy(&val, &data[1], 8);
         dst += "(int) ";
@@ -82,7 +88,8 @@ int32_t print_response(const uint8_t* data, size_t size, std::string& dst) {
         return 9;
     }
     case Tag::TAG_DBL: {
-        if (size < 1 + 8) return -1;
+        if (size < 1 + 8)
+            return -1;
         double val = 0;
         memcpy(&val, &data[1], 8);
         char buf[64];
@@ -93,7 +100,8 @@ int32_t print_response(const uint8_t* data, size_t size, std::string& dst) {
         return 9;
     }
     case Tag::TAG_ARR: {
-        if (size < 1 + 4) return -1;
+        if (size < 1 + 4)
+            return -1;
         uint32_t count = 0;
         memcpy(&count, &data[1], 4);
         dst += "(arr) len=";
@@ -102,7 +110,8 @@ int32_t print_response(const uint8_t* data, size_t size, std::string& dst) {
         size_t off = 5;
         for (uint32_t i = 0; i < count; ++i) {
             const int32_t used = print_response(&data[off], size - off, dst);
-            if (used < 0) return used;
+            if (used < 0)
+                return used;
             off += static_cast<size_t>(used);
         }
         dst += "(arr) end\n";

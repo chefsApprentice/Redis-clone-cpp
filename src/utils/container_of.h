@@ -5,7 +5,7 @@
 
 template <typename Owner, typename Member>
 auto container_of(Member* ptr, Member Owner::*member) -> Owner* {
-    auto* impl = reinterpret_cast<const char*>(ptr);
+    auto* impl = reinterpret_cast<char*>(ptr);
     auto offset = reinterpret_cast<std::ptrdiff_t>(&(((Owner*)nullptr)->*member));
     return reinterpret_cast<Owner*>(impl - offset);
 }
