@@ -15,6 +15,7 @@
 #include <cstring>
 #include <memory>
 #include <string>
+#include <unistd.h>
 #include <variant>
 #include <vector>
 
@@ -37,11 +38,7 @@ auto read_str(const uint8_t*& cur, const uint8_t* end, size_t n, string& out) ->
     cur += n;
     return true;
 }
-
 namespace {
-
-// the whole key-value store: a hash table of Entry, one per key
-HashTable g_data;
 
 // identifies an Entry by its key; used by the hash table's lookups
 auto entry_eq(const HashNode* node, const std::string& key) -> bool {
@@ -78,7 +75,7 @@ void arr_patch(Buffer& out, size_t ctx, uint32_t val) { memcpy(out.data_start + 
 //  /////////////////////////////////////////////////////////////////////////////////////////////////
 
 auto do_set(const std::vector<std::string>& cmd, Buffer& out) -> void {
-    HashNode* found = g_data.hash_get(cmd[1], entry_eq);
+    HashNode* found = g_data.db.hash_get(cmd[1], entry_eq);
     if (found != nullptr) {
         Entry* ent = container_of(found, &Entry::node);
         if (ent->is_zset()) {
@@ -92,14 +89,14 @@ auto do_set(const std::vector<std::string>& cmd, Buffer& out) -> void {
         // the Entry owns its embedded HashNode: hand its address to the table.
         // RAII guard: hash_add may throw bad_alloc; release only once inserted.
         auto entry = std::make_unique<Entry>(cmd[1], cmd[2]);
-        g_data.hash_add(cmd[1], &entry->node);
+        g_data.db.hash_add(cmd[1], &entry->node);
         entry.release(); // ownership transferred to g_data
     }
     append_int(out, RES_OK);
 }
 
 auto do_get(const std::vector<std::string>& cmd, Buffer& out) -> void {
-    HashNode* found = g_data.hash_get(cmd[1], entry_eq);
+    HashNode* found = g_data.db.hash_get(cmd[1], entry_eq);
     if (found == nullptr) {
         append_nil(out);
         return;
@@ -116,7 +113,7 @@ auto do_get(const std::vector<std::string>& cmd, Buffer& out) -> void {
 auto do_del(const std::vector<std::string>& cmd, Buffer& out) -> void {
     // unlink before freeing: the table holds the address of the node embedded
     // in the Entry, so it must leave the table first
-    HashNode* found = g_data.hash_remove(cmd[1], entry_eq);
+    HashNode* found = g_data.db.hash_remove(cmd[1], entry_eq);
     if (found == nullptr) {
         append_int(out, RES_NX);
         return;
@@ -135,7 +132,7 @@ auto do_zadd(const std::vector<std::string>& cmd, Buffer& out) -> void {
         append_err(out, RES_BAD_ARG, "expect float");
         return;
     }
-    HashNode* node = g_data.hash_get(cmd[1], entry_eq);
+    HashNode* node = g_data.db.hash_get(cmd[1], entry_eq);
     Entry* ent = nullptr;
     if (node != nullptr) {
         ent = container_of(node, &Entry::node);
@@ -145,7 +142,7 @@ auto do_zadd(const std::vector<std::string>& cmd, Buffer& out) -> void {
         }
     } else {
         auto entry = std::make_unique<Entry>(cmd[1], ZSet{});
-        g_data.hash_add(cmd[1], &entry->node);
+        g_data.db.hash_add(cmd[1], &entry->node);
         ent = entry.release();
     }
     const std::string& name = cmd[3];
@@ -155,7 +152,7 @@ auto do_zadd(const std::vector<std::string>& cmd, Buffer& out) -> void {
 }
 
 auto do_zrem(const std::vector<std::string>& cmd, Buffer& out) -> void {
-    HashNode* node = g_data.hash_get(cmd[1], entry_eq);
+    HashNode* node = g_data.db.hash_get(cmd[1], entry_eq);
     if (node == nullptr) {
         append_err(out, RES_NX, "Target not found");
         return;
@@ -171,7 +168,7 @@ auto do_zrem(const std::vector<std::string>& cmd, Buffer& out) -> void {
 }
 
 auto do_zscore(const std::vector<std::string>& cmd, Buffer& out) -> void {
-    HashNode* node = g_data.hash_get(cmd[1], entry_eq);
+    HashNode* node = g_data.db.hash_get(cmd[1], entry_eq);
     if (node == nullptr) {
         append_err(out, RES_NX, "Target not found");
         return;
@@ -205,7 +202,7 @@ static void do_zquery(std::vector<std::string>& cmd, Buffer& out) {
         return;
     }
 
-    HashNode* node = g_data.hash_get(cmd[1], entry_eq);
+    HashNode* node = g_data.db.hash_get(cmd[1], entry_eq);
     if (node == nullptr) {
         append_err(out, RES_NX, "Target couldn't be found.");
         return;
